@@ -1,8 +1,22 @@
-folder <- "./Desktop/Kaggle competition/stock data"
+folder <- "C:/Users/yekim/Desktop/data"
+
 setwd(folder)
 
+install.packages("quantmod")
+install.packages("lattice")
+install.packages("timeSeries")
+install.packages("rugarch")
+install.packages("zoo")
+install.packages("xts")
+install.packages("TTR")
+
 #library("quantmod")
-library("tseries")
+library(tseries)
+library(zoo)
+library(xts); library(TTR)
+library(quantmod)
+library(timeSeries)
+library(rugarch)
 
 # Read data 
 fundamentals <- read.csv("fundamentals.csv")
@@ -62,35 +76,74 @@ plot(close_UAL, ylab = "Adjusted closing price", main = "United Continental Hold
 
 library(leaps); library(locfit); library(mgcv); library(nlme); library(quadprog); library(tseries); library(TSA)
 
-#Take Logarithmic transformation of closing prices
-close_ALK = log(close_ALK)
-close_AAL = log(close_AAL)
-close_DAL = log(close_DAL)
-close_LUV = log(close_LUV)
-close_UAL = log(close_UAL)
+#Take the first difference from the Logarithmic transformation of closing prices
+returns_ALK = diff(log(close_ALK))
+returns_AAL = diff(log(close_AAL))
+returns_DAL = diff(log(close_DAL))
+returns_LUV = diff(log(close_LUV))
+returns_UAL = diff(log(close_UAL))
 
 #Plot the first difference of logarithmic transformations (increments)
 par(mfrow = c(2,3))
-plot(diff(close_ALK))
-plot(diff(close_AAL))
-plot(diff(close_DAL))
-plot(diff(close_LUV))
-plot(diff(close_UAL))
+plot(returns_ALK)
+plot(returns_AAL)
+plot(returns_DAL)
+plot(returns_LUV)
+plot(returns_UAL)
 
-#par(mfrow = c(2,3))
-#plot(diff(diff(close_ALK), lag=25))
-#plot(diff(diff(close_AAL), lag=25))
-#plot(diff(diff(close_DAL), lag=25))
-#plot(diff(diff(close_LUV), lag=25))
-#plot(diff(diff(close_UAL), lag=25))
+windowLength = 500
+foreLength = 50
+forecasts <- vector(mode = "character", length=foreLength)
+
+for(d in 0:foreLength){
+  return_offset = returns_ALK[(1+d):(windowLength + d)]
+  final.aic <- Inf
+  final.order <- c(0,0,0)
+  for(p in 0:5) for(q in 0:5){
+    if(p==0 && q==0){
+      next
+    }
+    arimafit = tryCatch( arima(return_offset, order= c(p,0,q)),
+                         error = function( err ) FALSE, 
+                         warning = function( err ) FALSE)
+    
+    if(!is.logical(arimafit)) {
+      current.aic <- AIC(arimafit)
+      if(current.aic < final.aic){
+        final.aic <-current.aic
+        final.order <- c(p,0,q)
+        final.arima <- arima(return_offset, order = final.order)
+      }
+    }else{
+      next
+    }
+  } 
+  
+  #Specify and fit the Garch model
+  spec = ugarchspec(variance.model = list(garchOrder = c(1,1)),
+                    mean.model = list(armaOrder=c(final.order[1], final.order[3]), include.mean=T),
+                    distribution.model = "sged")
+  fit = tryCatch(ugarchfit(spec, return_offset, solver='hybrid'),
+                 error=function(e) e, warning=function(w) w)
+   
+  
+}
+
+
+
+final.arima[is.na(final.arima)]
+acf(resid(final.arima))
+
+sum(is.na(return_offset))
+is.na((final.arima))
 
 
 par(mfrow=c(2,3))
-acf(as.vector(diff(close_ALK)), lag.max=36, ci.type='ma')
-acf(as.vector(diff(close_AAL)), lag.max=36, ci.type='ma')
-acf(as.vector(diff(close_DAL)), lag.max=36, ci.type='ma')
-acf(as.vector(diff(close_LUV)), lag.max=36, ci.type='ma')
-acf(as.vector(diff(close_UAL)), lag.max=36, ci.type='ma')
+acf(as.vector(returns_ALK), lag.max=36, ci.type='ma')
+acf(as.vector(returns_AAL), lag.max=36, ci.type='ma')
+acf(as.vector(returns_DAL), lag.max=36, ci.type='ma')
+acf(as.vector(returns_LUV), lag.max=36, ci.type='ma')
+acf(as.vector(returns_UAL), lag.max=36, ci.type='ma')
 
 #acf(coredata(diff(close_ALK)))
 par(mfrow=c(2,3))
